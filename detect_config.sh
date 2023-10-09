@@ -1,4 +1,5 @@
 #!/bin/sh
+LOG_FILE=${1:-/root/detected_config.txt}
 INTERFACES=$(ip -o link list | awk -F '[@: ]+' '{print $2}' | sort -V)
 GEMS=$(echo "$INTERFACES" | grep -E "^gem\d")
 PMAPS=$(echo "$INTERFACES" | grep -E "pmapper\d")
@@ -29,9 +30,9 @@ fi
 
 [ -n "$UNICAST_VLAN" ] || exit 1
 
-echo "Unicast VLAN: $UNICAST_VLAN" | tee /root/detected_config.txt
-echo "Multicast GEM: $MULTI_GEM" | tee -a /root/detected_config.txt
-echo "Internet GEM: $INTERNET_GEM" | tee -a /root/detected_config.txt
-echo "Internet PMAP: $INTERNET_PMAP" | tee -a /root/detected_config.txt
-echo "Services GEMs: $SERVICES_GEMS" | tee -a /root/detected_config.txt
-echo "Services PMAP: $SERVICES_PMAP" | tee -a /root/detected_config.txt
+echo "Unicast VLAN: $UNICAST_VLAN" | tee "$LOG_FILE"
+echo "Multicast GEM: $MULTI_GEM" | tee -a "$LOG_FILE"
+echo "Internet GEM: $INTERNET_GEM" | tee -a "$LOG_FILE"
+echo "Internet PMAP: $INTERNET_PMAP" | tee -a "$LOG_FILE"
+echo "Services GEMs: $SERVICES_GEMS" | tee -a "$LOG_FILE"
+echo "Services PMAP: $SERVICES_PMAP" | tee -a "$LOG_FILE"
