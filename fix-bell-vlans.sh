@@ -48,19 +48,19 @@ tc_flower_exists() {
 }
 
 tc_flower_del() {
-    echo del $@
+    echo del $@ >&2
     tc_flower_exists "$@" &&
     /sbin/tc filter del $(tc_flower_selector "$@")
 }
 
 tc_flower_add() {
-    echo add $@
+    echo add $@ >&2
     tc_flower_exists "$@" ||
     /sbin/tc filter add "$@"
 }
 
 tc_flower_clear() {
-   echo clear $@
+   echo clear $@ >&2
    /sbin/tc filter del $(tc_flower_selector -devdironly "$@")
 }
 
@@ -106,7 +106,7 @@ if [ -n "$SERVICES_VLAN" ]; then
     ## Unicast
     if [ -n "$SERVICES_GEM1" ]; then
         # Fix downstream Priority 0 on Services VLAN packets
-        tc_flower_add dev $SERVICES_GEM1 ingress handle 0x1 protocol 802.1Q pref 1 flower $UNI_VLAN vlan_prio 0 skip_sw action vlan modify priority 6 protocol 802.1Q pass
+        tc_flower_add dev $SERVICES_GEM1 ingress handle 0x1 protocol 802.1Q pref 1 flower $UNI_VLAN vlan_prio 0 skip_sw action vlan modify priority 4 protocol 802.1Q pass
     fi
 
     # Retag DS unicast packets for Services VLAN
@@ -135,7 +135,8 @@ if [ -n "$SERVICES_VLAN" ]; then
 
         # Block US priority 1-7 (Services) on Internet PMAP
         tc_flower_add dev $INTERNET_PMAP egress handle 0x1 protocol 802.1Q pref 1 flower $UNI_VLAN vlan_prio 0 skip_sw action pass
-        tc_flower_add dev $INTERNET_PMAP egress handle 0x2 protocol all pref 2 flower skip_sw action drop
+        tc_flower_add dev $INTERNET_PMAP egress handle 0x2 protocol 802.1Q pref 2 flower $UNI_VLAN action drop
+        tc_flower_add dev $INTERNET_PMAP egress handle 0x3 protocol all pref 3 flower skip_sw action drop
     fi
 fi
 
