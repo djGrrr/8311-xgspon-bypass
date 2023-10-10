@@ -1,4 +1,4 @@
-# bell-xgspon-bypass
+# Bell XGS-PON Bypass
 
 ## detect-config.sh
 This script will help detect the settings you need for the fix-bell-vlans.sh script
