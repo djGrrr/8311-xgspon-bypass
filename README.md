@@ -2,7 +2,7 @@
 
 ## detect-config.sh
 This script will help detect the settings you need for the fix-bell-vlans.sh script
-It takes a optional parameter of a log file, which defaults to -/root/detected-config.txt and a 2nd optional parameter of a debug log
+It takes a optional parameter of a log file, which defaults to /root/detected-config.txt and a 2nd optional parameter of a debug log
 
 You can set it up to run via crontab to get the settings without UART access:
 `* * * * * sh -c '/root/detect-config.sh /root/detected-config.txt`/root/detected-config.log'`
