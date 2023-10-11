@@ -13,15 +13,17 @@ MULTICAST_GEM=gem65534
 
 # Internet VLAN exposed to your network
 INTERNET_VLAN=35
-# Internet PMAP and GEM interfaces (probably doesn't need to be changed)
+# Internet PMAP interface (probably doesn't need to be changed)
 INTERNET_PMAP=pmapper57602
+# Internet GEM interface (may need to be changed)
 INTERNET_GEM=gem1126
 
 
 # Services VLAN exposed to your network (leave blank if you have no TV or phone services on the account, must be 34 or 36 if Unicast VLAN is unknown)
 SERVICES_VLAN=34
-# Services PMAP and GEM1 (first services GEM) interfaces (probably doesn't need to be changed)
+# Services PMAP (probably doesn't need to be changed)
 SERVICES_PMAP=pmapper57603
+# Services GEM1 (first services GEM interface, may need to be changed)
 SERVICES_GEM1=gem1127
 
 ####################################################
