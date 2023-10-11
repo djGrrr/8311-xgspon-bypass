@@ -2,7 +2,7 @@
 
 # Unicast interface on the ONT (don't change this)
 UNICAST_IFACE=eth0_0
-# Set UNICAST_VLAN with ISP unicast VLAN (2382, 1209, etc, this is different for everyone). If you are on Bell Canada, and JUST want to get Internet working on a multi-service account, leave this blank
+# Set UNICAST_VLAN with ISP Unicast VLAN (this is different for everyone; If you do not know your Unicast VLAN, you can leave this blank)
 UNICAST_VLAN=2871
 
 # Multicast interface on the ONT (don't change this)
