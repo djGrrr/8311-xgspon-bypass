@@ -1,30 +1,16 @@
 #!/bin/sh
 
-# Unicast interface on the ONT (don't change this)
-UNICAST_IFACE=eth0_0
-# Set UNICAST_VLAN with ISP Unicast VLAN (this is different for everyone; If you do not know your Unicast VLAN, you can leave this blank)
-UNICAST_VLAN=2871
-
-# Multicast interface on the ONT (don't change this)
-MUTICAST_IFACE=eth0_0_2
-# Mullticast GEM interface (probably doesn't need to be changed)
-MULTICAST_GEM=gem65534
-
-
 # Internet VLAN exposed to your network
 INTERNET_VLAN=35
-# Internet PMAP interface (probably doesn't need to be changed)
-INTERNET_PMAP=pmapper57602
-# Internet GEM interface (may need to be changed)
-INTERNET_GEM=gem1126
-
 
 # Services VLAN exposed to your network (leave blank if you have no TV or phone services on the account, must be 34 or 36 if Unicast VLAN is unknown)
 SERVICES_VLAN=34
-# Services PMAP (probably doesn't need to be changed)
-SERVICES_PMAP=pmapper57603
-# Services GEM1 (first services GEM interface, may need to be changed)
-SERVICES_GEM1=gem1127
+
+# Location of detect-config script, required if CONFIG file does not exist
+DETECT_CONFIG="/root/detect-bell-config.sh"
+
+# Location of configuration file, will be generated if it doesn't exist
+CONFIG_FILE="/root/bell-config.sh"
 
 ####################################################
 
@@ -67,99 +53,82 @@ tc_flower_clear() {
 }
 
 
-# Hack if you don't know the Unicast VLAN
-if [ -z "$UNICAST_VLAN" ]; then
-    # If we don't know the Unicast VLAN, then the Internet VLAN must be 35 as otherwise the US packets won't work
-    INTERNET_VLAN=35
-    # No vlan id will be specified for packet matching
-    UNI_VLAN=""
-else
-    UNI_VLAN="vlan_id $UNICAST_VLAN"
+### Configuration
+UNICAST_IFACE=eth0_0
+MULTICAST_IFACE=eth0_0_2
+INTERNET_VLAN=${INTERNET_VLAN:-35}
+SERVICES_VLAN=${SERVICES_VLAN:-34}
+CONFIG_FILE=${CONFIG_FILE:-"/root/bell-config.sh"}
+DETECT_CONFIG=${DETECT_CONFIG:-"/root/detect-config.sh"}
+
+if [ ! -f "$CONFIG_FILE" ]; then
+     if [ ! -e "$DETECT_CONFIG" ]; then
+        echo "Config file '$CONFIG_FILE' does not exist and detection script '$DETECT_CONFIG' missing." >&2
+        exit 1
+    fi
+
+    echo "Config file '$CONFIG_FILE' does not exist, detecting configuration..."
+
+    "$DETECT_CONFIG" -c "$CONFIG_FILE" > /dev/null
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo "Config file '$CONFIG_FILE' does not exist and unable to detect configuration." >&2
+        exit 1
+    fi
 fi
+
+source "$CONFIG_FILE"
 
 
 ### Downstream
+internet_pmap_ds_rules() {
+    tc_flower_add dev $INTERNET_PMAP ingress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan modify id $INTERNET_VLAN protocol 802.1Q pass
+}
+
+services_pmap_ds_rules() {
+    tc_flower_add dev $SERVICES_PMAP ingress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan modify id $SERVICES_VLAN protocol 802.1Q pass
+}
+
+multicast_gem_ds_rules() {
+    tc_flower_add dev $MULTICAST_GEM ingress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan modify id $SERVICES_VLAN priority 5 protocol 802.1Q pass
+}
 
 
-## Internet VLAN
+## Internet
+internet_pmap_ds_rules || { tc_flower_clear dev $INTERNET_PMAP ingress; internet_pmap_downstream_rules; }
 
-if [ -n "$INTERNET_GEM" ]; then
-    # Fix DS priority 1-7 on Internet VLAN
-    tc_flower_add dev $INTERNET_GEM ingress handle 0x1 protocol 802.1Q pref 1 flower $UNI_VLAN skip_sw action vlan modify priority 0 protocol 802.1Q pass
+# Services
+if [ -n "$SERVICES_PMAP" ]; then
+    services_pmap_ds_rules || { tc_flower_clear dev $SERVICES_PMAP ingress; services_pmap_downstream_rules; }
 fi
 
-# Retag DS unicast packets for Internet VLAN
-tc_flower_add dev $UNICAST_IFACE egress handle 0x55 protocol 802.1Q pref 5 flower $UNI_VLAN vlan_prio 0 skip_sw action vlan modify id $INTERNET_VLAN priority 0 protocol 802.1Q pass
-
-
-## Services VLAN
-if [ -n "$SERVICES_VLAN" ]; then
-    ## Multicast
-    if [ -n "$MUTICAST_IFACE" ]; then
-        # Set VLAN of DS Multicast packets to Services VLAN
-        tc_flower_add dev $MUTICAST_IFACE egress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan modify id $SERVICES_VLAN priority 5 protocol 802.1Q pass
-
-        # Clear pointless rules on Multicast GEM interface
-        if [ -n "$MULTICAST_GEM" ]; then
-            tc_flower_clear dev $MULTICAST_GEM ingress
-        fi
-    fi
-
-    ## Unicast
-    if [ -n "$SERVICES_GEM1" ]; then
-        # Fix downstream Priority 0 on Services VLAN packets
-        tc_flower_add dev $SERVICES_GEM1 ingress handle 0x1 protocol 802.1Q pref 1 flower $UNI_VLAN vlan_prio 0 skip_sw action vlan modify priority 4 protocol 802.1Q pass
-    fi
-
-    # Retag DS unicast packets for Services VLAN
-    tc_flower_add dev $UNICAST_IFACE egress handle 0x100 protocol 802.1Q pref 10 flower $UNI_VLAN skip_sw action vlan modify id $SERVICES_VLAN protocol 802.1Q pass
+# Multicast
+if [ -n "$MULTICAST_GEM" ] ; then
+    multicast_gem_ds_rules || { tc_flower_clear dev $MULTICAST_GEM ingress; multicast_gem_ds_rules; }
 fi
-
 
 
 ### Upstream
-
-services_pmap_rules() {
-    # Block US priority 0 (Internet) on services PMAP
-    tc_flower_add dev $SERVICES_PMAP egress handle 0x1 protocol 802.1Q pref 1 flower $UNI_VLAN vlan_prio 0 skip_sw action drop &&
-    tc_flower_add dev $SERVICES_PMAP egress handle 0x2 protocol 802.1Q pref 2 flower $UNI_VLAN skip_sw action pass &&
-    tc_flower_add dev $SERVICES_PMAP egress handle 0x3 protocol all pref 3 flower skip_sw action drop
+internet_pmap_us_rules() {
+    tc_flower_add dev $INTERNET_PMAP egress handle 0x1 protocol 802.1Q pref 1 flower vlan_id $INTERNET_VLAN skip_sw action vlan modify id $UNICAST_VLAN protocol 802.1Q pass &&
+    tc_flower_add dev $INTERNET_PMAP egress handle 0x2 protocol 802.1Q pref 2 flower skip_sw action drop
 }
 
-internet_pmap_rules() {
-    # Block US priority 1-7 (Services) on Internet PMAP
-    tc_flower_add dev $INTERNET_PMAP egress handle 0x1 protocol 802.1Q pref 1 flower $UNI_VLAN vlan_prio 0 skip_sw action pass &&
-    tc_flower_add dev $INTERNET_PMAP egress handle 0x2 protocol 802.1Q pref 2 flower $UNI_VLAN action drop &&
-    tc_flower_add dev $INTERNET_PMAP egress handle 0x3 protocol all pref 3 flower skip_sw action drop
+services_pmap_us_rules() {
+    tc_flower_add dev $SERVICES_PMAP egress handle 0x1 protocol 802.1Q pref 1 flower vlan_id $SERVICES_VLAN skip_sw action vlan modify id $UNICAST_VLAN protocol 802.1Q pass &&
+    tc_flower_add dev $SERVICES_PMAP egress handle 0x2 protocol 802.1Q pref 2 flower skip_sw action drop
 }
 
-## Fix broadcast domain bridging of Services and Internet VLANs
-if [ -n "$SERVICES_VLAN" ] && [ -n "$SERVICES_PMAP" ]; then
-    # Try to add rules, if errors, clear existing rules, then retry
-    services_pmap_rules || { tc_flower_clear dev $SERVICES_PMAP egress; services_pmap_rules; }
+
+# Internet
+internet_pmap_us_rules || { tc_flower_clear dev $INTERNET_PMAP egress; internet_pmap_us_rules; }
+
+# Services
+if [ -n "$SERVICES_PMAP" ]; then
+    services_pmap_us_rules || { tc_flower_clear dev $SERVICES_PMAP egress; services_pmap_us_rules; }
 fi
 
-if [ -n "$INTERNET_PMAP" ]; then
-    # Try to add rules, if errors, clear existing rules, then retry
-    internet_pmap_rules || { tc_flower_clear dev $INTERNET_PMAP egress; internet_pmap_rules; }
-fi
+# Cleanup
+tc_flower_clear dev $UNICAST_IFACE egress
+tc_flower_clear dev $UNICAST_IFACE ingress
+tc_flower_clear dev $MULTICAST_IFACE egress
 
-
-if [ -z "$UNI_VLAN" ] ; then
-    # If we don't know the Unicast VLAN, we can't create the remaining US rules, we must rely on the rules generated by omcid which are mostly ok
-    exit 0
-fi
-
-
-# Retag US for Internet VLAN
-tc_flower_add dev $UNICAST_IFACE ingress handle 0x301 protocol 802.1Q pref 5 flower vlan_id $INTERNET_VLAN skip_sw action vlan modify id $UNICAST_VLAN priority 0 protocol 802.1Q pass
-
-
-# Services VLAN
-if [ -n "$SERVICES_VLAN" ]; then
-    # Retag and fix US priority 0 on Services VLAN
-    tc_flower_add dev $UNICAST_IFACE ingress handle 0x401 protocol 802.1Q pref 11 flower vlan_id $SERVICES_VLAN vlan_prio 0 skip_sw action vlan modify id $UNICAST_VLAN priority 4 protocol 802.1Q pass
-
-    # Retag US unicast packets for Services VLAN
-    tc_flower_add dev $UNICAST_IFACE ingress handle 0x402 protocol 802.1Q pref 12 flower vlan_id $SERVICES_VLAN skip_sw action vlan modify id $UNICAST_VLAN protocol 802.1Q pass
-fi
