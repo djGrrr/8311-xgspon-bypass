@@ -1,16 +1,22 @@
 # Bell XGS-PON Bypass
 
-## detect-config.sh
-This script will help detect the settings you need for the fix-bell-vlans.sh script
-It takes a optional parameter of a log file, which defaults to /root/detected-config.txt and a 2nd optional parameter of a debug log
+## detect-bell-config.sh
+This is a helper script for fix-bell-vlans that will help detect the bell configuration.
+```
+Usage: ./detect-bell-config.sh [options]
 
-You can set it up to run via crontab to get the settings without UART access:  
-`* * * * * /root/detect-config.sh /root/detected-config.txt /root/detected-config.log`
+Options:
+-l --logfile <filename>         File location to log output (will be overwritten).
+-D --debugfile <filename>       File location to output debug logging (will be appended to).
+-d --debug                      Output debug information.
+-c --config <filename>          Write detected configuration to file
+-h --help                       This help text
+```
 
 ## fix-bell-vlans.sh
-This script will fix all the issues with multi-service vlans, can be run without knowing your Unicast VLAN but works better if you do
+This script will fix all the issues with multi-service vlans, and will use detect-bell-config.sh to detect the bell configuration.
 
-Configuration and it's documentation can be found at the top of the script
+You can remap the local VLANs used by editing the `INTERNET_VLAN` and `SERVICES_VLAN` variables at the top of the script.
 
 This is best put on a crontab to ensure the settings are applied at all times, it can be run multiple times without erroring:  
 `* * * * * /root/fix-bell-vlans.sh`
