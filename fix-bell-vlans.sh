@@ -88,8 +88,8 @@ services_pmap_ds_rules() {
     tc_flower_add dev $SERVICES_PMAP ingress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan modify id $SERVICES_VLAN protocol 802.1Q pass
 }
 
-multicast_gem_ds_rules() {
-    tc_flower_add dev $MULTICAST_GEM ingress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan modify id $SERVICES_VLAN priority 5 protocol 802.1Q pass
+multicast_iface_ds_rules() {
+    tc_flower_add dev $MULTICAST_IFACE egress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan modify id $SERVICES_VLAN priority 5 protocol 802.1Q pass
 }
 
 
@@ -103,7 +103,7 @@ fi
 
 # Multicast
 if [ -n "$MULTICAST_GEM" ] ; then
-    multicast_gem_ds_rules || { tc_flower_clear dev $MULTICAST_GEM ingress; multicast_gem_ds_rules; }
+    multicast_iface_ds_rules || { tc_flower_clear dev $MULTICAST_IFACE egress; multicast_iface_ds_rules; }
 fi
 
 
@@ -130,5 +130,3 @@ fi
 # Cleanup
 tc_flower_clear dev $UNICAST_IFACE egress
 tc_flower_clear dev $UNICAST_IFACE ingress
-tc_flower_clear dev $MULTICAST_IFACE egress
-
