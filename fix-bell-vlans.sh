@@ -13,6 +13,11 @@ DETECT_CONFIG="/root/detect-bell-config.sh"
 CONFIG_FILE="/root/bell-config.sh"
 
 ####################################################
+TC=$(PATH=/usr/sbin:/sbin /usr/bin/which tc)
+
+tc() {
+    $TC "$@"
+}
 
 tc_flower_selector() {
     dev=$(echo "$@" | grep -oE "dev \S+" | head -n1 | cut -d" " -f2)
@@ -28,7 +33,7 @@ tc_flower_selector() {
 }
 
 tc_flower_get() {
-    /sbin/tc filter get $(tc_flower_selector "$@")
+    tc filter get $(tc_flower_selector "$@")
 }
 
 tc_flower_exists() {
@@ -38,18 +43,18 @@ tc_flower_exists() {
 tc_flower_del() {
     echo del $@ >&2
     tc_flower_exists "$@" &&
-    /sbin/tc filter del $(tc_flower_selector "$@")
+    tc filter del $(tc_flower_selector "$@")
 }
 
 tc_flower_add() {
     echo add $@ >&2
     tc_flower_exists "$@" ||
-    /sbin/tc filter add "$@"
+    tc filter add "$@"
 }
 
 tc_flower_clear() {
    echo clear $@ >&2
-   /sbin/tc filter del $(tc_flower_selector -devdironly "$@")
+   tc filter del $(tc_flower_selector -devdironly "$@")
 }
 
 
