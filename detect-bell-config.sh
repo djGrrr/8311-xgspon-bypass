@@ -146,6 +146,21 @@ if [ -n "$INTERNET_PMAP" ]; then
         echo | debug
         echo "TC $INTERNET_PMAP egress:" | debug
         echo "$TC" | debug
+        UNICAST_VLAN=$(echo "$TC" | grep -oE "(modify|push) id \d+" | tail -n1 | awk '{print $3}')
+    fi
+fi
+
+if [ -z "$UNICAST_VLAN" ] && [ -n "$SERVICES_PMAP" ]; then
+    TC=$(tc filter show dev "$SERVICES_PMAP" ingress)
+    echo | debug
+    echo "TC $SERVICES_PMAP ingress:" | debug
+    echo "$TC" | debug
+    UNICAST_VLAN=$(echo "$TC" | grep -oE "vlan_id \d+" | head -n1 | awk '{print $2}')
+    if [ -z "$UNICAST_VLAN" ]; then
+        TC=$(tc filter show dev "$SERVICES_PMAP" egress)
+        echo | debug
+        echo "TC $SERVICES_PMAP egress:" | debug
+        echo "$TC" | debug
         UNICAST_VLAN=$(echo "$TC" | grep -oE "modify id \d+" | tail -n1 | awk '{print $3}')
     fi
 fi
