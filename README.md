@@ -16,7 +16,7 @@ Options:
 ## fix-bell-vlans.sh
 This script will fix all the issues with multi-service vlans, and will use detect-bell-config.sh to detect the bell configuration.
 
-You can remap the local VLANs used by setting fwenvs `bell_internet_vlan` and `bell_services_vlan`.
+You can remap the local VLANs used by setting fwenvs `bell_internet_vlan` and `bell_services_vlan`.  
 To change the Internet VLAN to 335 for example, run the following twice:  
 `fw_setenv bell_internet_vlan 335`  
 To make the Internet traffic untagged, set `bell_internet_vlan` to 0. The Services VLAN must always be tagged.
