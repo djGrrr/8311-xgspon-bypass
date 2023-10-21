@@ -60,48 +60,26 @@ CONFIG_FILE=${CONFIG_FILE:-"/tmp/bell-config.sh"}
 DETECT_CONFIG=${DETECT_CONFIG:-"/root/detect-config.sh"}
 
 
-CONFIG_RESET=
-if [ ! -f "$CONFIG_FILE" ]; then
-     if [ ! -e "$DETECT_CONFIG" ]; then
-        echo "Config file '$CONFIG_FILE' does not exist and detection script '$DETECT_CONFIG' missing." >&2
-        exit 1
-    fi
+if [ ! -e "$DETECT_CONFIG" ]; then
+    echo "Required detection script '$DETECT_CONFIG' missing." >&2
+    exit 1
+fi
 
-    echo "Config file '$CONFIG_FILE' does not exist, detecting configuration..."
+# Read config gile if it exists
+STATE_HASH=
+[ -f "$CONFIG_FILE" ] && . "$CONFIG_FILE"
 
-    # Get configuration from fwenvs
-    INTERNET_VLAN=$(fw_printenv -n bell_internet_vlan 2>/dev/null)
-    SERVICES_VLAN=$(fw_printenv -n bell_services_vlan 2>/dev/null)
+NEW_STATE_HASH=$("$DETECT_CONFIG" -H)
 
-    INTERNET_VLAN=${INTERNET_VLAN:-35}
-    SERVICES_VLAN=${SERVICES_VLAN:-34}
-
-    if ! { [ "$INTERNET_VLAN" -ge 0 ] 2>/dev/null && [ "$INTERNET_VLAN" -le 4095 ]; }; then
-        echo "Internet VLAN '$INTERNET_VLAN' is invalid." >&2
-        exit 1
-    fi
-
-    if ! { [ "$SERVICES_VLAN" -ge 1 ] 2>/dev/null && [ "$SERVICES_VLAN" -le 4095 ]; }; then
-        echo "Services VLAN '$SERVICES_VLAN' is invalid." >&2
-        exit 1
-    fi
-
-    if [ "$INTERNET_VLAN" -eq "$SERVICES_VLAN" ]; then
-        echo "Internet VLAN and Services VLAN must be different." >&2
-        exit 1
-    fi
+CONFIG_RESET=0
+if [ ! -f "$CONFIG_FILE" ] || [ "$NEW_STATE_HASH" != "$STATE_HASH" ]; then
+    echo "Config file '$CONFIG_FILE' does not exist or state changed, detecting configuration..."
 
     "$DETECT_CONFIG" -c "$CONFIG_FILE" > /dev/null
     if [ ! -f "$CONFIG_FILE" ]; then
-        echo "Config file '$CONFIG_FILE' does not exist and unable to detect configuration." >&2
+        echo "Error: Unable to detect configuration." >&2
         exit 1
     fi
-
-    echo >> "$CONFIG_FILE"
-    echo "# Internet VLAN exposed to network (0 = untagged)." >> "$CONFIG_FILE"
-	echo "INTERNET_VLAN=${INTERNET_VLAN}" >> "$CONFIG_FILE"
-    echo "# Services VLAN exposed to network." >> "$CONFIG_FILE"
-    echo "SERVICES_VLAN=${SERVICES_VLAN}" >> "$CONFIG_FILE"
 
     CONFIG_RESET=1
 fi
@@ -113,23 +91,12 @@ if ! { [ -n "$INTERNET_VLAN" ] && [ -n "$INTERNET_PMAP" ] && [ -n "$UNICAST_VLAN
     exit 1
 fi
 
-if [ -n "$CONFIG_RESET" ]; then
-    # Clear all tables
-    tc_flower_clear dev $MULTICAST_IFACE egress
-    tc_flower_clear dev $INTERNET_PMAP ingress
-    tc_flower_clear dev $INTERNET_PMAP egress
-
-    if [ -n "$SERVICES_PMAP" ]; then
-        tc_flower_clear dev $SERVICES_PMAP ingress
-        tc_flower_clear dev $SERVICES_PMAP egress
-    fi
-fi
 
 ### Downstream
 internet_pmap_ds_rules() {
     if [ "$INTERNET_VLAN" -ne 0 ]; then
         # Tagged
-	    tc_flower_add dev $INTERNET_PMAP ingress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan modify id $INTERNET_VLAN protocol 802.1Q pass
+        tc_flower_add dev $INTERNET_PMAP ingress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan modify id $INTERNET_VLAN protocol 802.1Q pass
     else
         # Untagged
         tc_flower_add dev $INTERNET_PMAP ingress handle 0x1 protocol 802.1Q pref 1 flower skip_sw action vlan pop pass
@@ -146,15 +113,18 @@ multicast_iface_ds_rules() {
 
 
 ## Internet
+[ "$CONFIG_RESET" -eq 1 ] && tc_flower_clear dev $INTERNET_PMAP ingress
 internet_pmap_ds_rules || { tc_flower_clear dev $INTERNET_PMAP ingress; internet_pmap_downstream_rules; }
 
 # Services
 if [ -n "$SERVICES_PMAP" ]; then
+    [ "$CONFIG_RESET" -eq 1 ] && tc_flower_clear dev $SERVICES_PMAP ingress
     services_pmap_ds_rules || { tc_flower_clear dev $SERVICES_PMAP ingress; services_pmap_downstream_rules; }
 fi
 
 # Multicast
 if [ -n "$SERVICES_PMAP" ] && [ -n "$MULTICAST_GEM" ] ; then
+	[ "$CONFIG_RESET" -eq 1 ] && tc_flower_clear dev $MULTICAST_IFACE egress
     multicast_iface_ds_rules || { tc_flower_clear dev $MULTICAST_IFACE egress; multicast_iface_ds_rules; }
 fi
 
@@ -181,10 +151,12 @@ services_pmap_us_rules() {
 
 
 # Internet
+[ "$CONFIG_RESET" -eq 1 ] && tc_flower_clear dev $INTERNET_PMAP egress
 internet_pmap_us_rules || { tc_flower_clear dev $INTERNET_PMAP egress; internet_pmap_us_rules; }
 
 # Services
 if [ -n "$SERVICES_PMAP" ]; then
+    [ "$CONFIG_RESET" -eq 1 ] && tc_flower_clear dev $SERVICES_PMAP egress
     services_pmap_us_rules || { tc_flower_clear dev $SERVICES_PMAP egress; services_pmap_us_rules; }
 fi
 
