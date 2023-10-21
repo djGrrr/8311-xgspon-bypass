@@ -4,6 +4,7 @@ DEBUG=0
 LOG_FILE=
 DEBUG_FILE=
 CONFIG_FILE=
+HASH_ONLY=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --logfile|-l)
@@ -21,9 +22,13 @@ while [ $# -gt 0 ]; do
             CONFIG_FILE="$2"
             shift
         ;;
+        -H|--hash)
+            HASH_ONLY=1
+        ;;
         --help|-h)
             printf -- 'Usage: %s [options]\n\n' "$0"
             printf -- 'Options:\n'
+            printf -- '-H --hash\t\t\tOnly generate state hash. Use to determine if the configuration should be re-detected.\n'
             printf -- '-l --logfile <filename>\t\tFile location to log output (will be overwritten).\n'
             printf -- '-D --debugfile <filename>\tFile location to output debug logging (will be appended to).\n'
             printf -- '-d --debug\t\t\tOutput debug information.\n'
@@ -38,6 +43,23 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
+
+hash_state() {
+    {
+        ip li
+        brctl show
+        for BRPORT_STATE in $(find /sys/devices/virtual/net/sw*/lower_*/brport/state 2>/dev/null); do
+             echo "$BRPORT_STATE: $(cat "$BRPORT_STATE")"
+        done
+    } | sha256sum | awk '{print $1}'
+}
+
+STATE_HASH=$(hash_state)
+if [ "$HASH_ONLY" -eq 1 ]; then
+    echo "$STATE_HASH"
+    exit 0
+fi
+
 
 write_config() {
     echo "# Unicast VLAN ID from Bell side" > "$CONFIG_FILE"
@@ -60,6 +82,16 @@ write_config() {
     else
         echo "SERVICES_GEMS=" >> "$CONFIG_FILE"
     fi
+
+    echo >> "$CONFIG_FILE"
+    echo "# Internet VLAN exposed to network (0 = untagged)." >> "$CONFIG_FILE"
+    echo "INTERNET_VLAN=${INTERNET_VLAN}" >> "$CONFIG_FILE"
+    echo "# Services VLAN exposed to network." >> "$CONFIG_FILE"
+    echo "SERVICES_VLAN=${SERVICES_VLAN}" >> "$CONFIG_FILE"
+
+    echo >> "$CONFIG_FILE"
+    echo "# State Hash" >> "$CONFIG_FILE"
+    echo "STATE_HASH=$STATE_HASH" >> "$CONFIG_FILE"
 
     echo "Config file written to '$CONFIG_FILE'" >&2
 }
@@ -87,6 +119,34 @@ debug() {
 }
 
 echo "=============" | debug
+echo "State Hash: $STATE_HASH" | debug
+echo | debug
+echo "Getting VLAN settings from fwenvs:" | debug
+INTERNET_VLAN=$(fw_printenv -n bell_internet_vlan 2>/dev/null)
+SERVICES_VLAN=$(fw_printenv -n bell_services_vlan 2>/dev/null)
+echo "bell_internet_vlan=$INTERNET_VLAN" | debug
+echo "bell_services_vlan=$SERVICES_VLAN" | debug
+
+INTERNET_VLAN=${INTERNET_VLAN:-35}
+SERVICES_VLAN=${SERVICES_VLAN:-34}
+
+if ! { [ "$INTERNET_VLAN" -ge 0 ] 2>/dev/null && [ "$INTERNET_VLAN" -le 4095 ]; }; then
+    echo "Internet VLAN '$INTERNET_VLAN' is invalid." >&2
+    exit 1
+fi
+
+if ! { [ "$SERVICES_VLAN" -ge 1 ] 2>/dev/null && [ "$SERVICES_VLAN" -le 4095 ]; }; then
+    echo "Services VLAN '$SERVICES_VLAN' is invalid." >&2
+    exit 1
+fi
+
+if [ "$INTERNET_VLAN" -eq "$SERVICES_VLAN" ]; then
+    echo "Internet VLAN and Services VLAN must be different." >&2
+    exit 1
+fi
+
+echo | debug
+
 INTERFACES=$(ip -o link list | awk -F '[@: ]+' '{print $2}' | sort -V)
 GEMS=$(echo "$INTERFACES" | grep -E "^gem\d")
 echo "GEMs:" | debug
@@ -189,5 +249,7 @@ echo "Internet GEM: $INTERNET_GEM" | log
 echo "Internet PMAP: $INTERNET_PMAP" | log
 echo "Services GEMs: $SERVICES_GEMS" | log
 echo "Services PMAP: $SERVICES_PMAP" | log
+echo "Internet VLAN: $INTERNET_VLAN" | log
+echo "Services VLAN: $SERVICES_VLAN" | log
 
 [ -n "$CONFIG_FILE" ] && write_config
