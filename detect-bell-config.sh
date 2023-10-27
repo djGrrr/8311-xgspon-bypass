@@ -121,31 +121,6 @@ debug() {
 echo "=============" | debug
 echo "State Hash: $STATE_HASH" | debug
 echo | debug
-echo "Getting VLAN settings from fwenvs:" | debug
-INTERNET_VLAN=$(fw_printenv -n bell_internet_vlan 2>/dev/null)
-SERVICES_VLAN=$(fw_printenv -n bell_services_vlan 2>/dev/null)
-echo "bell_internet_vlan=$INTERNET_VLAN" | debug
-echo "bell_services_vlan=$SERVICES_VLAN" | debug
-
-INTERNET_VLAN=${INTERNET_VLAN:-35}
-SERVICES_VLAN=${SERVICES_VLAN:-34}
-
-if ! { [ "$INTERNET_VLAN" -ge 0 ] 2>/dev/null && [ "$INTERNET_VLAN" -le 4095 ]; }; then
-    echo "Internet VLAN '$INTERNET_VLAN' is invalid." >&2
-    exit 1
-fi
-
-if ! { [ "$SERVICES_VLAN" -ge 1 ] 2>/dev/null && [ "$SERVICES_VLAN" -le 4095 ]; }; then
-    echo "Services VLAN '$SERVICES_VLAN' is invalid." >&2
-    exit 1
-fi
-
-if [ "$INTERNET_VLAN" -eq "$SERVICES_VLAN" ]; then
-    echo "Internet VLAN and Services VLAN must be different." >&2
-    exit 1
-fi
-
-echo | debug
 
 INTERFACES=$(ip -o link list | awk -F '[@: ]+' '{print $2}' | sort -V)
 GEMS=$(echo "$INTERFACES" | grep -E "^gem\d")
@@ -194,8 +169,13 @@ for PMAP in $PMAPS; do
     fi
 done
 
+if [ -z "$INTERNET_PMAP" ] && [ -n "$SERVICES_PMAP" ]; then
+    INTERNET_PMAP=$SERVICES_PMAP
+    SERVICES_PMAP=
+fi
+
 UNICAST_VLAN=
-if [ -n "$INTERNET_PMAP" ]; then
+if [ -n "$INTERNET_PMAP" ] ; then
     TC=$(tc filter show dev "$INTERNET_PMAP" ingress)
     echo | debug
     echo "TC $INTERNET_PMAP ingress:" | debug
@@ -210,38 +190,73 @@ if [ -n "$INTERNET_PMAP" ]; then
     fi
 fi
 
-if [ -z "$UNICAST_VLAN" ] && [ -n "$SERVICES_PMAP" ]; then
+DEFAULT_SERVICES_VLAN=
+if [ -n "$SERVICES_PMAP" ]; then
     TC=$(tc filter show dev "$SERVICES_PMAP" ingress)
     echo | debug
     echo "TC $SERVICES_PMAP ingress:" | debug
     echo "$TC" | debug
-    UNICAST_VLAN=$(echo "$TC" | grep -oE "vlan_id \d+" | head -n1 | awk '{print $2}')
-    if [ -z "$UNICAST_VLAN" ]; then
+
+    DEFAULT_SERVICES_VLAN=$(echo "$TC" | grep -oE "modify id \d+" | head -n1 | awk '{print $3}')
+    [ -z "$UNICAST_VLAN" ] && UNICAST_VLAN=$(echo "$TC" | grep -oE "vlan_id \d+" | head -n1 | awk '{print $2}')
+
+    if [ -z "$UNICAST_VLAN" ] || [ -z "$DEFAULT_SERVICES_VLAN" ]; then
         TC=$(tc filter show dev "$SERVICES_PMAP" egress)
         echo | debug
         echo "TC $SERVICES_PMAP egress:" | debug
         echo "$TC" | debug
-        UNICAST_VLAN=$(echo "$TC" | grep -oE "modify id \d+" | tail -n1 | awk '{print $3}')
+
+        [ -z "$UNICAST_VLAN" ] && UNICAST_VLAN=$(echo "$TC" | grep -oE "modify id \d+" | tail -n1 | awk '{print $3}')
+        [ -z "$DEFAULT_SERVICES_VLAN" ] && DEFAULT_SERVICES_VLAN=$(echo "$TC" | grep -oE "vlan_id \d+" | head -n1 | awk '{print $2}')
     fi
 fi
 
-if [ -z "$UNICAST_VLAN" ]; then
+if [ -z "$UNICAST_VLAN" ] || [ -z "$DEFAULT_SERVICES_VLAN" ]; then
     echo | debug
-    echo "Failed to find Unicast VLAN from PMAP, falling back to eth0_0 egress method" | debug
+    [ -z "$UNICAST_VLAN" ] && echo "Failed to find Unicast VLAN from PMAP, falling back to eth0_0 egress method" | debug
     TC=$(tc filter show dev eth0_0 egress)
     echo "TC eth0_0 egress:" | debug
     echo "$TC" | debug
-    UNICAST_VLAN=$(echo "$TC" | grep -oE "vlan_id \d+" | tail -n1 | awk '{print $2}')
+    [ -z "$UNICAST_VLAN" ] && UNICAST_VLAN=$(echo "$TC" | grep -oE "vlan_id \d+" | tail -n1 | awk '{print $2}')
+    [ -z "$DEFAULT_SERVICES_VLAN" ] && DEFAULT_SERVICES_VLAN=$(echo "$TC" | grep -oE "modify id (34|36) " | head -n1 | awk '{print $3}')
 fi
 
 if [ -n "$UNICAST_VLAN" ]; then
     echo | debug
     echo "Unicast VLAN Found: $UNICAST_VLAN" | debug
 fi
+
+echo "Getting VLAN settings from fwenvs:" | debug
+INTERNET_VLAN=$(fw_printenv -n bell_internet_vlan 2>/dev/null)
+SERVICES_VLAN=$(fw_printenv -n bell_services_vlan 2>/dev/null)
+echo "bell_internet_vlan=$INTERNET_VLAN" | debug
+echo "bell_services_vlan=$SERVICES_VLAN" | debug
+
+INTERNET_VLAN=${INTERNET_VLAN:-35}
+SERVICES_VLAN=${SERVICES_VLAN:-${DEFAULT_SERVICES_VLAN:-36}}
+
+if ! { [ "$INTERNET_VLAN" -ge 0 ] 2>/dev/null && [ "$INTERNET_VLAN" -le 4095 ]; }; then
+    echo "Internet VLAN '$INTERNET_VLAN' is invalid." >&2
+    exit 1
+fi
+
+if ! { [ "$SERVICES_VLAN" -ge 1 ] 2>/dev/null && [ "$SERVICES_VLAN" -le 4095 ]; }; then
+    echo "Services VLAN '$SERVICES_VLAN' is invalid." >&2
+    exit 1
+fi
+
+if [ "$INTERNET_VLAN" -eq "$SERVICES_VLAN" ]; then
+    echo "Internet VLAN and Services VLAN must be different." >&2
+    exit 1
+fi
+
+echo | debug
+
 echo "=============" | debug
 echo | debug
 
 [ -n "$UNICAST_VLAN" ] || exit 1
+
 
 echo "Unicast VLAN: $UNICAST_VLAN" | log -create
 echo "Multicast GEM: $MULTICAST_GEM" | log
