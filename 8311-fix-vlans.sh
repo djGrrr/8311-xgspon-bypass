@@ -1,10 +1,10 @@
 #!/bin/sh
 
 # Location of detect-config script, required if CONFIG file does not exist
-DETECT_CONFIG="/root/detect-bell-config.sh"
+DETECT_CONFIG="/root/8311-detect-config.sh"
 
 # Location of configuration file, will be generated if it doesn't exist
-CONFIG_FILE="/tmp/bell-config.sh"
+CONFIG_FILE="/tmp/8311-config.sh"
 
 ####################################################
 TC=$(PATH=/usr/sbin:/sbin /usr/bin/which tc)
@@ -56,8 +56,8 @@ tc_flower_clear() {
 UNICAST_IFACE=eth0_0
 MULTICAST_IFACE=eth0_0_2
 
-CONFIG_FILE=${CONFIG_FILE:-"/tmp/bell-config.sh"}
-DETECT_CONFIG=${DETECT_CONFIG:-"/root/detect-config.sh"}
+CONFIG_FILE=${CONFIG_FILE:-"/tmp/8311-config.sh"}
+DETECT_CONFIG=${DETECT_CONFIG:-"/root/8311-detect-config.sh"}
 
 
 if [ ! -e "$DETECT_CONFIG" ]; then
@@ -65,9 +65,13 @@ if [ ! -e "$DETECT_CONFIG" ]; then
     exit 1
 fi
 
-# Read config gile if it exists
+# Read config file if it exists
 STATE_HASH=
+FIX_ENABLED=
 [ -f "$CONFIG_FILE" ] && . "$CONFIG_FILE"
+if [ -n "$FIX_ENABLED" ] && [ "$FIX_ENABLED" -eq 0 ] 2>/dev/null; then
+	exit 69
+fi
 
 NEW_STATE_HASH=$("$DETECT_CONFIG" -H)
 
@@ -85,6 +89,10 @@ if [ ! -f "$CONFIG_FILE" ] || [ "$NEW_STATE_HASH" != "$STATE_HASH" ]; then
 fi
 
 . "$CONFIG_FILE"
+
+if [ -n "$FIX_ENABLED" ] && [ "$FIX_ENABLED" -eq 0 ] 2>/dev/null; then
+    exit 69
+fi
 
 if ! { [ -n "$INTERNET_VLAN" ] && [ -n "$INTERNET_PMAP" ] && [ -n "$UNICAST_VLAN" ]; }; then
     echo "Required variables INTERNET_VLAN, INTERNET_PMAP, and UNICAST_VLAN are not properly set." >&2

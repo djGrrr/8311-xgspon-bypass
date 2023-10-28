@@ -60,9 +60,15 @@ if [ "$HASH_ONLY" -eq 1 ]; then
     exit 0
 fi
 
+disable_config() {
+	echo "# Enable fix_vlans script?" > "$CONFIG_FILE"
+	echo "FIX_ENABLED=0" >> "$CONFIG_FILE"
+
+	echo "Config file written to '$CONFIG_FILE'" >&2
+}
 
 write_config() {
-    echo "# Unicast VLAN ID from Bell side" > "$CONFIG_FILE"
+    echo "# Unicast VLAN ID from ISP side" > "$CONFIG_FILE"
     echo "UNICAST_VLAN=$UNICAST_VLAN" >> "$CONFIG_FILE"
     echo >> "$CONFIG_FILE"
 
@@ -72,7 +78,7 @@ write_config() {
 
     echo "# Internet PMAP and GEM interfaces" >> "$CONFIG_FILE"
     echo "INTERNET_PMAP=$INTERNET_PMAP" >> "$CONFIG_FILE"
-    echo "INTERNET_GEM=$INTERNET_GEM" >> "$CONFIG_FILE"
+    echo "INTERNET_GEMS=$INTERNET_GEMS" >> "$CONFIG_FILE"
     echo >> "$CONFIG_FILE"
 
     echo "# Services PMAP and GEM interfaces" >> "$CONFIG_FILE"
@@ -122,6 +128,12 @@ echo "=============" | debug
 echo "State Hash: $STATE_HASH" | debug
 echo | debug
 
+FIX_ENABLED=$(fw_printenv -n 8311_fix_vlans 2>/dev/null)
+if [ -n "$FIX_ENABLED" ] && [ "$FIX_ENABLED" -eq 0 ] 2>/dev/null; then
+	disable_config
+	exit 0
+fi
+
 INTERFACES=$(ip -o link list | awk -F '[@: ]+' '{print $2}' | sort -V)
 GEMS=$(echo "$INTERFACES" | grep -E "^gem\d")
 echo "GEMs:" | debug
@@ -162,9 +174,9 @@ for PMAP in $PMAPS; do
         echo | debug
     elif [ -z "$INTERNET_PMAP" ]; then
         INTERNET_PMAP="$PMAP"
-        INTERNET_GEM=$PMAP_GEMS
+        INTERNET_GEMS=$(echo $PMAP_GEMS)
         echo | debug
-        echo "Internet PMAP and GEM found: $INTERNET_PMAP - $INTERNET_GEM" | debug
+        echo "Internet PMAP and GEMs found: $INTERNET_PMAP - $INTERNET_GEMS" | debug
         echo | debug
     fi
 done
@@ -172,6 +184,8 @@ done
 if [ -z "$INTERNET_PMAP" ] && [ -n "$SERVICES_PMAP" ]; then
     INTERNET_PMAP=$SERVICES_PMAP
     SERVICES_PMAP=
+    INTERNET_GEMS=$SERVICES_GEMS
+    SERVICES_GEMS=
 fi
 
 UNICAST_VLAN=
@@ -227,12 +241,12 @@ if [ -n "$UNICAST_VLAN" ]; then
 fi
 
 echo "Getting VLAN settings from fwenvs:" | debug
-INTERNET_VLAN=$(fw_printenv -n bell_internet_vlan 2>/dev/null)
-SERVICES_VLAN=$(fw_printenv -n bell_services_vlan 2>/dev/null)
-echo "bell_internet_vlan=$INTERNET_VLAN" | debug
-echo "bell_services_vlan=$SERVICES_VLAN" | debug
+INTERNET_VLAN=$(fw_printenv -n 8311_internet_vlan 2>/dev/null || fw_printenv -n bell_internet_vlan 2>/dev/null)
+SERVICES_VLAN=$(fw_printenv -n 8311_services_vlan 2>/dev/null || fw_printenv -n bell_services_vlan 2>/dev/null)
+echo "8311_internet_vlan=$INTERNET_VLAN" | debug
+echo "8311_services_vlan=$SERVICES_VLAN" | debug
 
-INTERNET_VLAN=${INTERNET_VLAN:-35}
+INTERNET_VLAN=${INTERNET_VLAN:-0}
 SERVICES_VLAN=${SERVICES_VLAN:-${DEFAULT_SERVICES_VLAN:-36}}
 
 if ! { [ "$INTERNET_VLAN" -ge 0 ] 2>/dev/null && [ "$INTERNET_VLAN" -le 4095 ]; }; then
@@ -260,7 +274,7 @@ echo | debug
 
 echo "Unicast VLAN: $UNICAST_VLAN" | log -create
 echo "Multicast GEM: $MULTICAST_GEM" | log
-echo "Internet GEM: $INTERNET_GEM" | log
+echo "Internet GEMs: $INTERNET_GEMS" | log
 echo "Internet PMAP: $INTERNET_PMAP" | log
 echo "Services GEMs: $SERVICES_GEMS" | log
 echo "Services PMAP: $SERVICES_PMAP" | log
