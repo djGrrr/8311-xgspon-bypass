@@ -78,7 +78,7 @@ write_config() {
 
     echo "# Internet PMAP and GEM interfaces" >> "$CONFIG_FILE"
     echo "INTERNET_PMAP=$INTERNET_PMAP" >> "$CONFIG_FILE"
-    echo "INTERNET_GEMS=$INTERNET_GEMS" >> "$CONFIG_FILE"
+    echo "INTERNET_GEMS=\"$INTERNET_GEMS\"" >> "$CONFIG_FILE"
     echo >> "$CONFIG_FILE"
 
     echo "# Services PMAP and GEM interfaces" >> "$CONFIG_FILE"
