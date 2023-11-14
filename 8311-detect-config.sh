@@ -130,7 +130,7 @@ echo | debug
 
 FIX_ENABLED=$(fw_printenv -n 8311_fix_vlans 2>/dev/null)
 if [ -n "$FIX_ENABLED" ] && [ "$FIX_ENABLED" -eq 0 ] 2>/dev/null; then
-	disable_config
+	[ -n "$CONFIG_FILE" ] && disable_config
 	exit 0
 fi
 
