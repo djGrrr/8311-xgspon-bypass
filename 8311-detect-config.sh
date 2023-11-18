@@ -44,6 +44,12 @@ while [ $# -gt 0 ]; do
     shift
 done
 
+
+# 4354 (AT&T), 57602 (Bell)
+KNOWN_INTERNET_PMAPPERS="4354 57602"
+# 57603 (Bell)
+KNOWN_SERVICES_PMAPPERS="57603"
+
 hash_state() {
     {
         ip li
@@ -100,6 +106,17 @@ write_config() {
     echo "STATE_HASH=$STATE_HASH" >> "$CONFIG_FILE"
 
     echo "Config file written to '$CONFIG_FILE'" >&2
+}
+
+get_pmap_gems() {
+    local PMAP="$1"
+    local LINK=$(ip -d link list dev "$PMAP")
+
+    echo "PMAP $PMAP Link:" | debug
+    echo "$LINK" | debug
+    local GEMS=$(echo "$LINK" | grep -oE "gem\d+" | sort -u)
+    echo "PMAP $PMAP GEMs: $(echo $GEMS)" | debug
+    echo "$GEMS"
 }
 
 log() {
@@ -159,27 +176,48 @@ echo | debug
 
 INTERNET_PMAP=
 SERVICES_PMAP=
-for PMAP in $PMAPS; do
-    LINK=$(ip -d link list dev "$PMAP")
-    echo "PMAP $PMAP Link:" | debug
-    echo "$LINK" | debug
-    PMAP_GEMS=$(echo "$LINK" | grep -oE "gem\d+" | sort -u)
-    echo "PMAP $PMAP GEMs: $(echo $PMAP_GEMS)" | debug
-    PMAP_NUM_GEMS=$(echo "$PMAP_GEMS" | wc -l)
-    if [ -z "$SERVICES_PMAP" ] && [ "$PMAP_NUM_GEMS" -gt 1 ]; then
-        SERVICES_PMAP="$PMAP"
-        SERVICES_GEMS=$(echo $PMAP_GEMS)
-        echo | debug
-        echo "Services PMAP and GEMs found: $SERVICES_PMAP - $SERVICES_GEMS" | debug
-        echo | debug
-    elif [ -z "$INTERNET_PMAP" ]; then
+
+for PMAPID in $KNOWN_INTERNET_PMAPPERS; do
+    PMAP="pmapper$PMAPID"
+    if echo "$PMAPS" | grep -q "^${PMAP}$"; then
         INTERNET_PMAP="$PMAP"
-        INTERNET_GEMS=$(echo $PMAP_GEMS)
+        INTERNET_GEMS=$(echo $(get_pmap_gems "$PMAP"))
+        echo "Known Internet PMAP and GEMs found: $INTERNET_PMAP - $INTERNET_GEMS" | debug
         echo | debug
-        echo "Internet PMAP and GEMs found: $INTERNET_PMAP - $INTERNET_GEMS" | debug
-        echo | debug
+        break
     fi
 done
+
+for PMAPID in $KNOWN_SERVICES_PMAPPERS; do
+    PMAP="pmapper$PMAPID"
+    if echo "$PMAPS" | grep -q "^${PMAP}$"; then
+        SERVICES_PMAP="$PMAP"
+        SERVICES_GEMS=$(echo $(get_pmap_gems "$PMAP"))
+        echo "Known Services PMAP and GEMs found: $SERVICES_PMAP - $SERVICES_GEMS" | debug
+        echo | debug
+        break
+    fi
+done
+
+if [ -z "$INTERNET_PMAP" ]; then
+    for PMAP in $PMAPS; do
+        PMAP_GEMS=$(get_pmap_gems "$PMAP")
+        PMAP_NUM_GEMS=$(echo "$PMAP_GEMS" | wc -l)
+        if [ -z "$SERVICES_PMAP" ] && [ "$PMAP_NUM_GEMS" -gt 1 ]; then
+            SERVICES_PMAP="$PMAP"
+            SERVICES_GEMS=$(echo $PMAP_GEMS)
+            echo | debug
+            echo "Services PMAP and GEMs found: $SERVICES_PMAP - $SERVICES_GEMS" | debug
+            echo | debug
+        elif [ -z "$INTERNET_PMAP" ]; then
+            INTERNET_PMAP="$PMAP"
+            INTERNET_GEMS=$(echo $PMAP_GEMS)
+            echo | debug
+            echo "Internet PMAP and GEMs found: $INTERNET_PMAP - $INTERNET_GEMS" | debug
+            echo | debug
+        fi
+    done
+fi
 
 if [ -z "$INTERNET_PMAP" ] && [ -n "$SERVICES_PMAP" ]; then
     INTERNET_PMAP=$SERVICES_PMAP
