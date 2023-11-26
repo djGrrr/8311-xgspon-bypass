@@ -252,6 +252,7 @@ if [ -n "$SERVICES_PMAP" ]; then
     DEFAULT_SERVICES_VLAN=$(echo "$TC" | grep -oE "modify id \d+" | head -n1 | awk '{print $3}')
     [ -z "$UNICAST_VLAN" ] && UNICAST_VLAN=$(echo "$TC" | grep -oE "vlan_id \d+" | head -n1 | awk '{print $2}')
 
+    [ "$UNICAST_VLAN" -eq "$DEFAULT_SERVICES_VLAN" ] 2>/dev/null && DEFAULT_SERVICES_VLAN=
     if [ -z "$UNICAST_VLAN" ] || [ -z "$DEFAULT_SERVICES_VLAN" ]; then
         TC=$(tc filter show dev "$SERVICES_PMAP" egress)
         echo | debug
@@ -263,6 +264,7 @@ if [ -n "$SERVICES_PMAP" ]; then
     fi
 fi
 
+[ "$UNICAST_VLAN" -eq "$DEFAULT_SERVICES_VLAN" ] 2>/dev/null && DEFAULT_SERVICES_VLAN=
 if [ -z "$UNICAST_VLAN" ] || [ -z "$DEFAULT_SERVICES_VLAN" ]; then
     echo | debug
     [ -z "$UNICAST_VLAN" ] && echo "Failed to find Unicast VLAN from PMAP, falling back to eth0_0 egress method" | debug
@@ -277,6 +279,8 @@ if [ -n "$UNICAST_VLAN" ]; then
     echo | debug
     echo "Unicast VLAN Found: $UNICAST_VLAN" | debug
 fi
+
+[ "$UNICAST_VLAN" -eq "$DEFAULT_SERVICES_VLAN" ] 2>/dev/null && DEFAULT_SERVICES_VLAN=
 
 echo "Getting VLAN settings from fwenvs:" | debug
 INTERNET_VLAN=$(fw_printenv -n 8311_internet_vlan 2>/dev/null || fw_printenv -n bell_internet_vlan 2>/dev/null)
