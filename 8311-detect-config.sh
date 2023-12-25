@@ -45,10 +45,14 @@ while [ $# -gt 0 ]; do
 done
 
 
-# 4354 (AT&T), 57602 (Bell)
-KNOWN_INTERNET_PMAPPERS="4354 57602"
+# 4354  (AT&T)
+# 41218 (Frontier)
+# 57602 (Bell)
+KNOWN_INTERNET_PMAPPERS="4354 41218 57602"
+
 # 57603 (Bell)
 KNOWN_SERVICES_PMAPPERS="57603"
+
 
 hash_state() {
     {
