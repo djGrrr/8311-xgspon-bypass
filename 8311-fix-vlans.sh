@@ -122,12 +122,12 @@ multicast_iface_ds_rules() {
 
 ## Internet
 [ "$CONFIG_RESET" -eq 1 ] && tc_flower_clear dev $INTERNET_PMAP ingress
-internet_pmap_ds_rules || { tc_flower_clear dev $INTERNET_PMAP ingress; internet_pmap_downstream_rules; }
+internet_pmap_ds_rules || { tc_flower_clear dev $INTERNET_PMAP ingress; internet_pmap_ds_rules; }
 
 # Services
 if [ -n "$SERVICES_PMAP" ]; then
     [ "$CONFIG_RESET" -eq 1 ] && tc_flower_clear dev $SERVICES_PMAP ingress
-    services_pmap_ds_rules || { tc_flower_clear dev $SERVICES_PMAP ingress; services_pmap_downstream_rules; }
+    services_pmap_ds_rules || { tc_flower_clear dev $SERVICES_PMAP ingress; services_pmap_ds_rules; }
 fi
 
 # Multicast
