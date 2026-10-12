@@ -118,7 +118,7 @@ get_pmap_gems() {
 
     echo "PMAP $PMAP Link:" | debug
     echo "$LINK" | debug
-    local GEMS=$(echo "$LINK" | grep -oE "gem\d+" | sort -u)
+    local GEMS=$(echo "$LINK" | grep -oE "gem[0-9]+" | sort -u)
     echo "PMAP $PMAP GEMs: $(echo $GEMS)" | debug
     echo "$GEMS"
 }
@@ -156,11 +156,11 @@ if [ -n "$FIX_ENABLED" ] && [ "$FIX_ENABLED" -eq 0 ] 2>/dev/null; then
 fi
 
 INTERFACES=$(ip -o link list | awk -F '[@: ]+' '{print $2}' | sort -V)
-GEMS=$(echo "$INTERFACES" | grep -E "^gem\d")
+GEMS=$(echo "$INTERFACES" | grep -E "^gem[0-9]")
 echo "GEMs:" | debug
 echo "$GEMS" | debug
 echo | debug
-PMAPS=$(echo "$INTERFACES" | grep -E "pmapper\d")
+PMAPS=$(echo "$INTERFACES" | grep -E "pmapper[0-9]")
 echo "PMAPs:" | debug
 echo "$PMAPS" | debug
 echo | debug
@@ -184,8 +184,10 @@ SERVICES_PMAP=
 for PMAPID in $KNOWN_INTERNET_PMAPPERS; do
     PMAP="pmapper$PMAPID"
     if echo "$PMAPS" | grep -q "^${PMAP}$"; then
+        PMAP_GEMS=$(get_pmap_gems "$PMAP")
+        [ -n "$PMAP_GEMS" ] || continue
         INTERNET_PMAP="$PMAP"
-        INTERNET_GEMS=$(echo $(get_pmap_gems "$PMAP"))
+        INTERNET_GEMS=$(echo "$PMAP_GEMS")
         echo "Known Internet PMAP and GEMs found: $INTERNET_PMAP - $INTERNET_GEMS" | debug
         echo | debug
         break
@@ -213,7 +215,7 @@ if [ -z "$INTERNET_PMAP" ]; then
             echo | debug
             echo "Services PMAP and GEMs found: $SERVICES_PMAP - $SERVICES_GEMS" | debug
             echo | debug
-        elif [ -z "$INTERNET_PMAP" ]; then
+        elif [ -z "$INTERNET_PMAP" ] && [ -n "$PMAP_GEMS" ]; then
             INTERNET_PMAP="$PMAP"
             INTERNET_GEMS=$(echo $PMAP_GEMS)
             echo | debug
@@ -236,13 +238,13 @@ if [ -n "$INTERNET_PMAP" ] ; then
     echo | debug
     echo "TC $INTERNET_PMAP ingress:" | debug
     echo "$TC" | debug
-    UNICAST_VLAN=$(echo "$TC" | grep -oE "vlan_id \d+" | head -n1 | awk '{print $2}')
+    UNICAST_VLAN=$(echo "$TC" | grep -oE "vlan_id [0-9]+" | head -n1 | awk '{print $2}')
     if [ -z "$UNICAST_VLAN" ]; then
         TC=$(tc filter show dev "$INTERNET_PMAP" egress)
         echo | debug
         echo "TC $INTERNET_PMAP egress:" | debug
         echo "$TC" | debug
-        UNICAST_VLAN=$(echo "$TC" | grep -oE "(modify|push) id \d+" | tail -n1 | awk '{print $3}')
+        UNICAST_VLAN=$(echo "$TC" | grep -oE "(modify|push) id [0-9]+" | tail -n1 | awk '{print $3}')
     fi
 fi
 
@@ -253,8 +255,8 @@ if [ -n "$SERVICES_PMAP" ]; then
     echo "TC $SERVICES_PMAP ingress:" | debug
     echo "$TC" | debug
 
-    DEFAULT_SERVICES_VLAN=$(echo "$TC" | grep -oE "modify id \d+" | head -n1 | awk '{print $3}')
-    [ -z "$UNICAST_VLAN" ] && UNICAST_VLAN=$(echo "$TC" | grep -oE "vlan_id \d+" | head -n1 | awk '{print $2}')
+    DEFAULT_SERVICES_VLAN=$(echo "$TC" | grep -oE "modify id [0-9]+" | head -n1 | awk '{print $3}')
+    [ -z "$UNICAST_VLAN" ] && UNICAST_VLAN=$(echo "$TC" | grep -oE "vlan_id [0-9]+" | head -n1 | awk '{print $2}')
 
     [ "$UNICAST_VLAN" -eq "$DEFAULT_SERVICES_VLAN" ] 2>/dev/null && DEFAULT_SERVICES_VLAN=
     if [ -z "$UNICAST_VLAN" ] || [ -z "$DEFAULT_SERVICES_VLAN" ]; then
@@ -263,8 +265,8 @@ if [ -n "$SERVICES_PMAP" ]; then
         echo "TC $SERVICES_PMAP egress:" | debug
         echo "$TC" | debug
 
-        [ -z "$UNICAST_VLAN" ] && UNICAST_VLAN=$(echo "$TC" | grep -oE "modify id \d+" | tail -n1 | awk '{print $3}')
-        [ -z "$DEFAULT_SERVICES_VLAN" ] && DEFAULT_SERVICES_VLAN=$(echo "$TC" | grep -oE "vlan_id \d+" | head -n1 | awk '{print $2}')
+        [ -z "$UNICAST_VLAN" ] && UNICAST_VLAN=$(echo "$TC" | grep -oE "modify id [0-9]+" | tail -n1 | awk '{print $3}')
+        [ -z "$DEFAULT_SERVICES_VLAN" ] && DEFAULT_SERVICES_VLAN=$(echo "$TC" | grep -oE "vlan_id [0-9]+" | head -n1 | awk '{print $2}')
     fi
 fi
 
@@ -275,7 +277,7 @@ if [ -z "$UNICAST_VLAN" ] || [ -z "$DEFAULT_SERVICES_VLAN" ]; then
     TC=$(tc filter show dev eth0_0 egress)
     echo "TC eth0_0 egress:" | debug
     echo "$TC" | debug
-    [ -z "$UNICAST_VLAN" ] && UNICAST_VLAN=$(echo "$TC" | grep -oE "vlan_id \d+" | tail -n1 | awk '{print $2}')
+    [ -z "$UNICAST_VLAN" ] && UNICAST_VLAN=$(echo "$TC" | grep -oE "vlan_id [0-9]+" | tail -n1 | awk '{print $2}')
     [ -z "$DEFAULT_SERVICES_VLAN" ] && DEFAULT_SERVICES_VLAN=$(echo "$TC" | grep -oE "modify id (34|36) " | head -n1 | awk '{print $3}')
 fi
 
